@@ -9,5 +9,7 @@
 # granted to it by virtue of its status as an Intergovernmental Organization
 # or submit itself to any jurisdiction.
 
-add_subdirectory(PIDML)
-add_subdirectory(KFparticle)
+o2physics_add_dpl_workflow(qa-kfparticle
+                           SOURCES qaKFParticle.cxx
+                           PUBLIC_LINK_LIBRARIES O2::Framework O2Physics::AnalysisCore O2::ReconstructionDataFormats KFParticle::KFParticle
+                           COMPONENT_NAME Analysis)
