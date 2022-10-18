@@ -1076,6 +1076,9 @@ struct AnalysisReconKfparticle{
  
        //improve mass by setting up mass and topological constrain
        
+       float mJpsi, mJpsi_err; 
+       Jpsi.GetMass(mJpsi, m_err); 
+             
       }
     }
 
