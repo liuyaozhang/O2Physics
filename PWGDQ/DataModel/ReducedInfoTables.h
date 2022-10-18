@@ -465,6 +465,19 @@ DECLARE_SOA_TABLE(DileptonTrackCandidates, "AOD", "RTDILEPTONTRACK", //!
 
 using DileptonTrackCandidate = DileptonTrackCandidates::iterator;
 
+
+// jpsicandidate_Kf
+namespace jpsicandidate_Kf
+{
+DECLARE_SOA_INDEX_COLUMN(ReducedEvent, reducedevent);
+DECLARE_SOA_COLUMN(MassKF, massKF, float); 
+DECLARE_SOA_COLUMN(Chi2KF, chi2KF, float);  
+}
+
+DECLARE_SOA_TABLE(Jpsicandidate_Kf, "AOD", "RTJPSICANDIDATE_KF", //!
+                  jpsicandidate_kf::MassKF, 
+                  jpsicandidate_kf::Chi2KF); 
+
 namespace v0bits
 {
 DECLARE_SOA_COLUMN(PIDBit, pidbit, uint8_t); //!
