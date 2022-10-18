@@ -467,7 +467,7 @@ using DileptonTrackCandidate = DileptonTrackCandidates::iterator;
 
 
 // jpsicandidate_Kf
-namespace jpsicandidate_Kf
+namespace jpsicandidate_kf
 {
 DECLARE_SOA_INDEX_COLUMN(ReducedEvent, reducedevent);
 DECLARE_SOA_COLUMN(MassKF, massKF, float); 
