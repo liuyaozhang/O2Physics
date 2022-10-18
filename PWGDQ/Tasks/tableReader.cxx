@@ -769,7 +769,7 @@ struct AnalysisSameEventPairing {
         } // end if (filter bits)
       }   // end for (cuts)
     }     // end loop over pairs
-  }
+  }       // end runSameEventPairing
 
   void processJpsiToEESkimmed(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelected> const& tracks)
   {
@@ -935,6 +935,159 @@ struct AnalysisDileptonHadron {
   PROCESS_SWITCH(AnalysisDileptonHadron, processDummy, "Dummy function", false);
 };
 
+struct AnalysisReconKfparticle{
+ //reconstuct the weak decay using KFparticle
+ //
+  OutputObj<THashList> fOutputList{"output"};
+  Configurable<string> fConfigTrackCuts{"cfgLeptonCuts", "", "Comma separated list of barrel track cuts"};
+  Configurable<double> magneticField{"d_bz", 5., "magnetic field"};
+
+  Filter filterEventSelected = aod::dqanalysisflags::isEventSelected == 1;
+  Filter filterTrackSelected = aod::dqanalysisflags::isBarrelSelected > 0; 
+  
+  HistogramManager* fHistMan;
+  
+  uint32_t fTwoTrackFilterMask = 0;
+  std::vector<std::vector<TString>> fTrackHistNames;
+
+  Partition<MyBarrelTracksSelected> posTracks = aod::reducedtrack::sign > 0 && aod::reducedtrack::isBarrelSelected > uint8_t(0);
+  Partition<MyBarrelTracksSelected> negTracks = aod::reducedtrack::sign < 0 && aod::reducedtrack::isBarrelSelected > uint8_t(0);
+
+  void init(o2::framework::InitContext& context)
+  {
+    //fValuesDilepton = new float[VarManager::kNVars];
+    //fValuesHadron = new float[VarManager::kNVars];
+    VarManager::SetDefaultVarNames();
+    fHistMan = new HistogramManager("analysisHistos", "aa", VarManager::kNVars);
+    fHistMan->SetUseDefaultVariableNames(kTRUE);
+    fHistMan->SetDefaultVarNames(VarManager::fgVariableNames, VarManager::fgVariableUnits);
+
+    // TODO: Create separate histogram directories for each selection used in the creation of the dileptons
+    // TODO: Implement possibly multiple selections for the associated track ?
+    if (context.mOptions.get<bool>("processSkimmed")) {
+      DefineHistograms(fHistMan, "DileptonsSelected;DileptonHadronInvMass;DileptonHadronCorrelation"); // define all histograms
+      VarManager::SetUseVars(fHistMan->GetUsedVars());
+      fOutputList.setObject(fHistMan->GetMainHistogramList());
+    }
+
+    TString configCutNamesStr = fConfigTrackCuts.value;
+    if (!configCutNamesStr.IsNull()) {
+      std::unique_ptr<TObjArray> objArray(configCutNamesStr.Tokenize(","));
+      fNHadronCutBit = objArray->GetEntries();
+    } else {
+      fNHadronCutBit = 0;
+    }
+  } //end the init()
+
+
+ void processJpsiToEESkimmedKfparticle(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelected> const& tracks){
+  //set PV vertex; 
+  KFPVertex kfpVertex; 
+  kfpVertex.SetXYZ(event.posX(), event.posY(), event.posZ());
+  kfpVertex.SetCovarianceMatrix(event.XX(), event.XY(), event.YY(), event.XZ(), event.YZ(), event.ZZ());
+  kfpVertex.SetChi2(event.chi2());
+  kfpVertex.SetNContributors(event.numContrib());
+
+  KFParticle KFPV(kfpVertex);
+
+  constexpr static int pairType = VarManager::kJpsiToEE;
+  
+  for (auto tpos : posTracks) {
+     //dauther0
+     array<float, 3> trkpos_par;
+     array<float, 3> trkmom_par;
+     array<float, 21> trk_cov;
+     array<float 1> trk_chi2; 
+     array<int, 1> trk_charge; 
+     array<int, 1> trk_ndf;
+ 
+     auto trackparCov = getTrackParCov(tpos);
+     trackparCov.getXYZGlo(trkpos_par);
+     trackparCov.getPxPyPzGlo(trkmom_par);
+     trackparCov.getCovXYZPxPyPzGlo(trk_cov);
+    
+     float trkpar_KF0[6] = {trkpos_par[0], trkpos_par[1], trkpos_par[2], trkmom_par[0], trkmom_par[1], trkmom_par[2]};
+     float trkcov_KF0[21];
+     for (int i=0; i<21; i++){
+       trkcov_KF0[i] = trk_cov[i];
+      }
+  trk_charge.fill(tpos.sign());
+  trk_chi2.fill(tpos.getChi2());
+  trk_ndf.fill(tpos.getNDF());   
+
+       
+  KFPTrack kfpTrack_Prong0;
+  kfpTrack_Prong0.SetParameters(trkpar_KF0);
+  kfpTrack_Prong0.SetCovarianceMatrix(trkcov_KF0);
+
+  kfpTrack_Prong0.SetCharge(tpos.sign());
+  //kfpTrack_Prong0.SetChi2(track.getChi2());
+  //kfpTrack_Prong0.SetNDF(track.getNDF());   
+  float trk_massEp = 0.0005; // GeV 
+  
+  KFParticle trkProng0_KF;
+  trkProng0_KF.Create(trkpar_KF0, trkcov_KF0, trk_charge, trk_chi2, trk_ndf, trk_massEp);  
+  
+     for (auto tneg : negTracks) { // +- pair
+        //dauther1; 
+        array<float, 3> trkpos_par;
+        array<float, 3> trkmom_par;
+        array<float, 21> trk_cov;
+        auto trackparCov = getTrackParCov(tneg);
+        trackparCov.getXYZGlo(trkpos_par);
+        trackparCov.getPxPyPzGlo(trkmom_par);
+        trackparCov.getCovXYZPxPyPzGlo(trk_cov);
+        float trkpar_KF1[6] = {trkpos_par[0], trkpos_par[1], trkpos_par[2], trkmom_par[0], trkmom_par[1], trkmom_par[2]};
+        float trkcov_KF1[21];
+        for (int i=0; i<21; i++){
+          trkcov_KF1[i] = trk_cov[i];
+         }
+        KFPTrack kfpTrack_Prong1;
+        kfpTrack_Prong1.SetParameters(trkpar_KF1);
+        kfpTrack_Prong1.SetCovarianceMatrix(trkcov_KF1);
+
+        KFParticle trkProng1_KF;
+        trkProng1_KF.Create(trkpar_KF1, trkcov_KF1, trk_charge, trk_chi2, trk_ndf, trk_massEp);
+           
+        filter = tpos.isBarrelSelected() & tneg.isBarrelSelected();
+        if (!filter) { // the tracks must have at least one filter bit in common to continue
+          continue;
+        }
+        VarManager::FillPair<pairType, gkTrackFillMap>(tpos, tneg, fValues);
+        for (int i = 0; i < fNTrackCuts; ++i) {
+          if (filter & (uint8_t(1) << i)) {
+            fHistMan->FillHistClass(Form("PairsBarrelULS_%s", fTrkCutsNameArray->At(i)->GetName()), fValues);
+             }
+           }
+   
+       //for mother;   
+       KFParticle Jpsi; 
+       Jpsi.SetConstrutMethod(2); 
+       Jpsi.AddDaughter(trkProng0_KF); 
+       Jpsi.AddDaughter(trkProng1_KF); 
+  
+       //improve dauthers(set production vertex for them and mass constrains)
+       trkProng0_KF.SetProdutionVertex(Jpsi); 
+       trkProng0_KF.SetNonlinearMassCnstraint(trk_mass); 
+ 
+       trkProng1_KF.SetProdutionVertex(Jpsi); 
+       trkProng1_KF.SetNonlinearMassCnstraint(trk_mass); 
+ 
+       //improve mass by setting up mass and topological constrain
+       
+      }
+    }
+
+
+
+ 
+  } //end the loop for the tracks; 
+  
+ 
+ }  //end the process(). 
+ PROCESS_SWITCH(AnalysisReconKfparticle, processJpsiToEESkimmedKfparticle, "Run Jpsi reconstruction using KFparticle tools, with skimmed tracks", false);
+}  //ends the struct AnalysisReconKfparticle
+
 WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
 {
   return WorkflowSpec{
@@ -943,9 +1096,9 @@ WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
     adaptAnalysisTask<AnalysisMuonSelection>(cfgc),
     adaptAnalysisTask<AnalysisEventMixing>(cfgc),
     adaptAnalysisTask<AnalysisSameEventPairing>(cfgc),
-    adaptAnalysisTask<AnalysisDileptonHadron>(cfgc)};
+    adaptAnalysisTask<AnalysisDileptonHadron>(cfgc);
+    adaptAnalysisTask<AnalysisReconKfparticle>(cfgc)};
 }
-
 void DefineHistograms(HistogramManager* histMan, TString histClasses)
 {
   //
