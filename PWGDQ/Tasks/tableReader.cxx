@@ -939,7 +939,7 @@ struct AnalysisReconKfparticle{
  //reconstuct the weak decay using KFparticle
  //
   OutputObj<THashList> fOutputList{"output"};
-  Configurable<string> fConfigTrackCuts{"cfgLeptonCuts", "", "Comma separated list of barrel track cuts"};
+  Configurable<string> fConfigTrackCuts{"cfgBarrelTrackCuts", "", "Comma separated list of barrel track cuts"};
   Configurable<double> magneticField{"d_bz", 5., "magnetic field"};
 
   Filter filterEventSelected = aod::dqanalysisflags::isEventSelected == 1;
@@ -957,26 +957,21 @@ struct AnalysisReconKfparticle{
   {
     //fValuesDilepton = new float[VarManager::kNVars];
     //fValuesHadron = new float[VarManager::kNVars];
+    fValues = new float[VarManager::kNVars]; 
     VarManager::SetDefaultVarNames();
     fHistMan = new HistogramManager("analysisHistos", "aa", VarManager::kNVars);
     fHistMan->SetUseDefaultVariableNames(kTRUE);
     fHistMan->SetDefaultVarNames(VarManager::fgVariableNames, VarManager::fgVariableUnits);
 
-    // TODO: Create separate histogram directories for each selection used in the creation of the dileptons
-    // TODO: Implement possibly multiple selections for the associated track ?
-    if (context.mOptions.get<bool>("processSkimmed")) {
-      DefineHistograms(fHistMan, "DileptonsSelected;DileptonHadronInvMass;DileptonHadronCorrelation"); // define all histograms
-      VarManager::SetUseVars(fHistMan->GetUsedVars());
-      fOutputList.setObject(fHistMan->GetMainHistogramList());
-    }
-
     TString configCutNamesStr = fConfigTrackCuts.value;
-    if (!configCutNamesStr.IsNull()) {
-      std::unique_ptr<TObjArray> objArray(configCutNamesStr.Tokenize(","));
-      fNHadronCutBit = objArray->GetEntries();
-    } else {
-      fNHadronCutBit = 0;
-    }
+    fTrkCutsNameArray = trackCutNamesStr.Tokenize(",");
+    fNTrackCuts = fTrkCutsNameArray->GetEntries();
+    TString histNames = "";
+
+    // TODO: Create separate histogram directories for each selection used in the creation of the dileptons
+    DefineHistograms(fHistMan, "DileptonInvMass"); // define all histograms
+    VarManager::SetUseVars(fHistMan->GetUsedVars());
+    fOutputList.setObject(fHistMan->GetMainHistogramList());
   } //end the init()
 
 
@@ -1019,11 +1014,11 @@ struct AnalysisReconKfparticle{
   KFPTrack kfpTrack_Prong0;
   kfpTrack_Prong0.SetParameters(trkpar_KF0);
   kfpTrack_Prong0.SetCovarianceMatrix(trkcov_KF0);
+  float trk_massEp = 0.0005; //GeV 
 
-  kfpTrack_Prong0.SetCharge(tpos.sign());
+  //kfpTrack_Prong0.SetCharge(tpos.sign());
   //kfpTrack_Prong0.SetChi2(track.getChi2());
   //kfpTrack_Prong0.SetNDF(track.getNDF());   
-  float trk_massEp = 0.0005; // GeV 
   
   KFParticle trkProng0_KF;
   trkProng0_KF.Create(trkpar_KF0, trkcov_KF0, trk_charge, trk_chi2, trk_ndf, trk_massEp);  
@@ -1042,12 +1037,18 @@ struct AnalysisReconKfparticle{
         for (int i=0; i<21; i++){
           trkcov_KF1[i] = trk_cov[i];
          }
+       
+        trk_charge.fill(tneg.sign());
+        trk_chi2.fill(tneg.getChi2());
+        trk_ndf.fill(tneg.getNDF());  
+        float trk_massEm = 0.0005; // GeV 
+
         KFPTrack kfpTrack_Prong1;
         kfpTrack_Prong1.SetParameters(trkpar_KF1);
         kfpTrack_Prong1.SetCovarianceMatrix(trkcov_KF1);
 
         KFParticle trkProng1_KF;
-        trkProng1_KF.Create(trkpar_KF1, trkcov_KF1, trk_charge, trk_chi2, trk_ndf, trk_massEp);
+        trkProng1_KF.Create(trkpar_KF1, trkcov_KF1, trk_charge, trk_chi2, trk_ndf, trk_massEm);
            
         filter = tpos.isBarrelSelected() & tneg.isBarrelSelected();
         if (!filter) { // the tracks must have at least one filter bit in common to continue
