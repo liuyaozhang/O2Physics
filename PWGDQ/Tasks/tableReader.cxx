@@ -11,6 +11,8 @@
 //
 // Contact: iarsene@cern.ch, i.c.arsene@fys.uio.no
 //
+// Contact: zhangli@cern.ch for the KFParticle
+
 #include "CCDB/BasicCCDBManager.h"
 #include "Framework/runDataProcessing.h"
 #include "Framework/AnalysisTask.h"
@@ -32,6 +34,19 @@
 #include <vector>
 #include <algorithm>
 
+//incllude O2
+
+//include O2Physics
+#include "Common/Core/trackUtilities.h"
+#include "Common/Core/RecoDecay.h"
+
+// include KFParticle
+#include "KFParticle.h"
+#include "KFPTrack.h"
+#include "KFPVertex.h"
+#include "KFParticleBase.h"
+#include "KFVertex.h"
+
 using std::cout;
 using std::endl;
 using std::string;
@@ -40,6 +55,7 @@ using namespace o2;
 using namespace o2::framework;
 using namespace o2::framework::expressions;
 using namespace o2::aod;
+using namespace o2::track; 
 
 // Some definitions
 namespace o2::aod
@@ -89,7 +105,7 @@ constexpr static uint32_t gkEventFillMapWithQvector = VarManager::ObjTypes::Redu
 constexpr static uint32_t gkEventFillMapWithCovQvector = VarManager::ObjTypes::ReducedEvent | VarManager::ObjTypes::ReducedEventExtended | VarManager::ObjTypes::ReducedEventVtxCov | VarManager::ObjTypes::ReducedEventQvector;
 
 constexpr static uint32_t gkTrackFillMap = VarManager::ObjTypes::ReducedTrack | VarManager::ObjTypes::ReducedTrackBarrel | VarManager::ObjTypes::ReducedTrackBarrelPID;
-// constexpr static uint32_t gkTrackFillMapWithCov = VarManager::ObjTypes::ReducedTrack | VarManager::ObjTypes::ReducedTrackBarrel | VarManager::ObjTypes::ReducedTrackBarrelCov | VarManager::ObjTypes::ReducedTrackBarrelPID;
+constexpr static uint32_t gkTrackFillMapWithCov = VarManager::ObjTypes::ReducedTrack | VarManager::ObjTypes::ReducedTrackBarrel | VarManager::ObjTypes::ReducedTrackBarrelCov | VarManager::ObjTypes::ReducedTrackBarrelPID;
 constexpr static uint32_t gkMuonFillMap = VarManager::ObjTypes::ReducedMuon | VarManager::ObjTypes::ReducedMuonExtra;
 constexpr static uint32_t gkMuonFillMapWithCov = VarManager::ObjTypes::ReducedMuon | VarManager::ObjTypes::ReducedMuonExtra | VarManager::ObjTypes::ReducedMuonCov;
 
@@ -940,7 +956,7 @@ struct AnalysisReconKfparticle{
  //
   OutputObj<THashList> fOutputList{"output"};
   Configurable<string> fConfigTrackCuts{"cfgBarrelTrackCuts", "", "Comma separated list of barrel track cuts"};
-  Configurable<double> magneticField{"d_bz", 5., "magnetic field"};
+  Configurable<float> magneticField{"d_bz", 5., "magnetic field"};
 
   Filter filterEventSelected = aod::dqanalysisflags::isEventSelected == 1;
   Filter filterTrackSelected = aod::dqanalysisflags::isBarrelSelected > 0; 
@@ -948,22 +964,21 @@ struct AnalysisReconKfparticle{
   HistogramManager* fHistMan;
   
   uint32_t fTwoTrackFilterMask = 0;
-  std::vector<std::vector<TString>> fTrackHistNames;
 
-  Partition<MyBarrelTracksSelected> posTracks = aod::reducedtrack::sign > 0 && aod::reducedtrack::isBarrelSelected > uint8_t(0);
-  Partition<MyBarrelTracksSelected> negTracks = aod::reducedtrack::sign < 0 && aod::reducedtrack::isBarrelSelected > uint8_t(0);
+  std::vector<std::vector<TString>> fTrackHistNames;
+  std::vector<std::vector<TString>> fMuonHistNames;
+  std::vector<std::vector<TString>> fTrackMuonHistNames;
 
   Produces<o2::aod::Jpsicandidate_Kf> jpsicandidate_kf; 
 
   void init(o2::framework::InitContext& context)
   {
-    //fValuesDilepton = new float[VarManager::kNVars];
-    //fValuesHadron = new float[VarManager::kNVars];
-    fValues = new float[VarManager::kNVars]; 
     VarManager::SetDefaultVarNames();
     fHistMan = new HistogramManager("analysisHistos", "aa", VarManager::kNVars);
     fHistMan->SetUseDefaultVariableNames(kTRUE);
     fHistMan->SetDefaultVarNames(VarManager::fgVariableNames, VarManager::fgVariableUnits);
+   
+    KFParticle::SetField(magneticField);    
 
     // Keep track of all the histogram class names to avoid composing strings in the event mixing pairing
       TString histNames = "";
@@ -1007,25 +1022,23 @@ struct AnalysisReconKfparticle{
 
     uint32_t twoTrackFilter = 0;
     uint32_t dileptonFilterMap = 0;
-    uint32_t dileptonMcDecision = 0; // placeholder, copy of the dqEfficiency.cxx one
-    dileptonList.reserve(1);
-    dileptonExtraList.reserve(1);
-
+    //uint32_t dileptonMcDecision = 0; // placeholder, copy of the dqEfficiency.cxx one
 
     //set PV vertex; 
     KFPVertex kfpVertex; 
     kfpVertex.SetXYZ(event.posX(), event.posY(), event.posZ());
-    kfpVertex.SetCovarianceMatrix(event.XX(), event.XY(), event.YY(), event.XZ(), event.YZ(), event.ZZ());
+    kfpVertex.SetCovarianceMatrix(event.covXX(), event.covXY(), event.covYY(), event.covXZ(), event.covYZ(), event.covZZ());
     kfpVertex.SetChi2(event.chi2());
     kfpVertex.SetNContributors(event.numContrib());
 
     KFParticle KFPV(kfpVertex);
 
+
     for (auto& [t1, t2] : combinations(tracks1, tracks2)) {
       //dauther0
-      array<float, 3> trkpos_par0;
-      array<float, 3> trkmom_par0;
-      array<float, 21> trk_cov0;
+      std::array<float, 3> trkpos_par0;
+      std::array<float, 3> trkmom_par0;
+      std::array<float, 21> trk_cov0;
 
       auto trackparCov0 = getTrackParCov(t1);
       trackparCov0.getXYZGlo(trkpos_par0);
@@ -1043,13 +1056,13 @@ struct AnalysisReconKfparticle{
       kfpTrack_Prong0.SetCovarianceMatrix(trkcov_KF0);
       kfpTrack_Prong0.SetCharge(t1.sign());
 
-      KFParticle trkProng0_KF;
-      trkProng0_KF.Create(kfpTrack_Prong0, t1.pidForTracking());
+      int pdgProng0 = 11; //e-
+      KFParticle trkProng0_KF(kfpTrack_Prong0, pdgProng0); 
 
       //dauther1; 
-      array<float, 3> trkpos_par1;
-      array<float, 3> trkmom_par1;
-      array<float, 21> trk_cov1;
+      std::array<float, 3> trkpos_par1;
+      std::array<float, 3> trkmom_par1;
+      std::array<float, 21> trk_cov1;
 
       auto trackparCov1 = getTrackParCov(t2);
       trackparCov1.getXYZGlo(trkpos_par1);
@@ -1065,16 +1078,15 @@ struct AnalysisReconKfparticle{
       kfpTrack_Prong1.SetParameters(trkpar_KF1);
       kfpTrack_Prong1.SetCovarianceMatrix(trkcov_KF1);
       kfpTrack_Prong1.SetCharge(t2.sign());
-
-      KFParticle trkProng1_KF;
-      trkProng1_KF.Create(kfpTrack_Prong1, t2.pidForTracking());
-
+     
+      int pdgProng1 = -11; //e+
+      KFParticle trkProng1_KF(kfpTrack_Prong1, pdgProng1);
 
       if constexpr (TPairType == VarManager::kJpsiToEE) {
         twoTrackFilter = uint32_t(t1.isBarrelSelected()) & uint32_t(t2.isBarrelSelected()) & fTwoTrackFilterMask;
       }
       if constexpr (TPairType == VarManager::kJpsiToMuMu) {
-        twoTrackFilter = uint32_t(t1.isMuonSelected()) & uint32_t(t2.isMuonSelected()) & fTwoMuonFilterMask;
+        //twoTrackFilter = uint32_t(t1.isMuonSelected()) & uint32_t(t2.isMuonSelected()) & fTwoMuonFilterMask;
       }
       if constexpr (TPairType == VarManager::kElectronMuon) {
         twoTrackFilter = uint32_t(t1.isBarrelSelected()) & uint32_t(t2.isMuonSelected()) & fTwoTrackFilterMask;
@@ -1095,15 +1107,15 @@ struct AnalysisReconKfparticle{
 
       // TODO: provide the type of pair to the dilepton table (e.g. ee, mumu, emu...)
       dileptonFilterMap = twoTrackFilter;
-      dileptonList(event, VarManager::fgValues[VarManager::kMass], VarManager::fgValues[VarManager::kPt], VarManager::fgValues[VarManager::kEta], VarManager::fgValues[VarManager::kPhi], t1.sign() + t2.sign(), dileptonFilterMap, dileptonMcDecision);
+      //dileptonList(event, VarManager::fgValues[VarManager::kMass], VarManager::fgValues[VarManager::kPt], VarManager::fgValues[VarManager::kEta], VarManager::fgValues[VarManager::kPhi], t1.sign() + t2.sign(), dileptonFilterMap, dileptonMcDecision);
 
       constexpr bool muonHasCov = ((TTrackFillMap & VarManager::ObjTypes::MuonCov) > 0 || (TTrackFillMap & VarManager::ObjTypes::ReducedMuonCov) > 0);
       if constexpr ((TPairType == pairTypeMuMu) && muonHasCov) {
-        dileptonExtraList(t1.globalIndex(), t2.globalIndex(), VarManager::fgValues[VarManager::kVertexingTauz], VarManager::fgValues[VarManager::kVertexingLz], VarManager::fgValues[VarManager::kVertexingLxy]);
+        //dileptonExtraList(t1.globalIndex(), t2.globalIndex(), VarManager::fgValues[VarManager::kVertexingTauz], VarManager::fgValues[VarManager::kVertexingLz], VarManager::fgValues[VarManager::kVertexingLxy]);
       }
 
       if constexpr (eventHasQvector) {
-        dileptonFlowList(VarManager::fgValues[VarManager::kU2Q2], VarManager::fgValues[VarManager::kU3Q3], VarManager::fgValues[VarManager::kCos2DeltaPhi], VarManager::fgValues[VarManager::kCos3DeltaPhi]);
+        //dileptonFlowList(VarManager::fgValues[VarManager::kU2Q2], VarManager::fgValues[VarManager::kU3Q3], VarManager::fgValues[VarManager::kCos2DeltaPhi], VarManager::fgValues[VarManager::kCos3DeltaPhi]);
       }
 
       for (unsigned int icut = 0; icut < ncuts; icut++) {
@@ -1129,25 +1141,25 @@ struct AnalysisReconKfparticle{
       float Jpsi_m, Jpsi_m_err; 
       Jpsi.GetMass(Jpsi_m, Jpsi_m_err);
  
-      jpsicandidate_kf(Jpsi_m, Jpsi.GetChi2(); 
+      jpsicandidate_kf(Jpsi_m, Jpsi.GetChi2()); 
       
        
     }     // end loop over pairs
   }       // end runSameEventPairing
   
-  void processJpsiToEESkimmedKfparticle(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelected> const& tracks){
+  //void processJpsiToEESkimmedKfparticle(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelected> const& tracks){
+  void processJpsiToEESkimmedKfparticle(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelectedWithCov> const& tracks){
 
   // Reset the fValues array 
     VarManager::ResetValues(0, VarManager::kNVars);
     VarManager::FillEvent<gkEventFillMap>(event, VarManager::fgValues);
-    runSameEventPairingKfparticle<VarManager::kJpsiToEE, gkEventFillMap, gkTrackFillMap>(event, tracks, tracks);
+    runSameEventPairingKfparticle<VarManager::kJpsiToEE, gkEventFillMap, gkTrackFillMapWithCov>(event, tracks, tracks);
  
   } //end the loop for the tracks; 
   
  
- }  //end the process(). 
  PROCESS_SWITCH(AnalysisReconKfparticle, processJpsiToEESkimmedKfparticle, "Run Jpsi reconstruction using KFparticle tools, with skimmed tracks", false);
-}  //ends the struct AnalysisReconKfparticle
+};  //ends the struct AnalysisReconKfparticle
 
 WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
 {
@@ -1157,7 +1169,7 @@ WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
     adaptAnalysisTask<AnalysisMuonSelection>(cfgc),
     adaptAnalysisTask<AnalysisEventMixing>(cfgc),
     adaptAnalysisTask<AnalysisSameEventPairing>(cfgc),
-    adaptAnalysisTask<AnalysisDileptonHadron>(cfgc);
+    adaptAnalysisTask<AnalysisDileptonHadron>(cfgc),
     adaptAnalysisTask<AnalysisReconKfparticle>(cfgc)};
 }
 void DefineHistograms(HistogramManager* histMan, TString histClasses)

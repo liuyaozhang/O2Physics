@@ -474,7 +474,7 @@ DECLARE_SOA_COLUMN(MassKF, massKF, float);
 DECLARE_SOA_COLUMN(Chi2KF, chi2KF, float);  
 }
 
-DECLARE_SOA_TABLE(Jpsicandidate_Kf, "AOD", "RTJPSICANDIDATE_KF", //!
+DECLARE_SOA_TABLE(Jpsicandidate_Kf, "AOD", "RTJPSICANDKF", //!
                   jpsicandidate_kf::MassKF, 
                   jpsicandidate_kf::Chi2KF); 
 
