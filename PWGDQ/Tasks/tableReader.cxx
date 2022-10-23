@@ -40,7 +40,12 @@
 #include "Common/Core/trackUtilities.h"
 #include "Common/Core/RecoDecay.h"
 
+
 // include KFParticle
+#ifndef HomogeneousField
+#define HomogeneousField
+#endif
+
 #include "KFParticle.h"
 #include "KFPTrack.h"
 #include "KFPVertex.h"
@@ -131,6 +136,7 @@ struct AnalysisEventSelection {
 
   void init(o2::framework::InitContext&)
   {
+    std::cout << "AnalysisEventSelection check  from Liuyao" << std::endl; 
     fEventCut = new AnalysisCompositeCut(true);
     TString eventCutStr = fConfigEventCuts.value;
     fEventCut->AddCut(dqcuts::GetAnalysisCut(eventCutStr.Data()));
@@ -212,6 +218,7 @@ struct AnalysisTrackSelection {
 
   void init(o2::framework::InitContext&)
   {
+    std::cout << "AnalysisTrackSelection check  from Liuyao" << std::endl; 
     TString cutNamesStr = fConfigCuts.value;
     if (!cutNamesStr.IsNull()) {
       std::unique_ptr<TObjArray> objArray(cutNamesStr.Tokenize(","));
@@ -294,6 +301,7 @@ struct AnalysisMuonSelection {
 
   void init(o2::framework::InitContext&)
   {
+    std::cout << "AnalysisMuonSelection check  from Liuyao" << std::endl; 
     TString cutNamesStr = fConfigCuts.value;
     if (!cutNamesStr.IsNull()) {
       std::unique_ptr<TObjArray> objArray(cutNamesStr.Tokenize(","));
@@ -389,6 +397,7 @@ struct AnalysisEventMixing {
 
   void init(o2::framework::InitContext& context)
   {
+    std::cout << "AnalysisEventMixing check  from Liuyao" << std::endl; 
     VarManager::SetDefaultVarNames();
     fHistMan = new HistogramManager("analysisHistos", "aa", VarManager::kNVars);
     fHistMan->SetUseDefaultVariableNames(kTRUE);
@@ -638,13 +647,21 @@ struct AnalysisSameEventPairing {
   std::vector<std::vector<TString>> fTrackHistNames;
   std::vector<std::vector<TString>> fMuonHistNames;
   std::vector<std::vector<TString>> fTrackMuonHistNames;
+ 
+  //Kfparticle
+  OutputObj<TH1F> hmassJpsi{"hmassJpsi"};
+  Configurable<float> magneticField{"d_bz", 5., "magnetic field"};
 
   void init(o2::framework::InitContext& context)
   {
+    std::cout << "AnalysisSameEventPairing check  from Liuyao" << std::endl; 
     VarManager::SetDefaultVarNames();
     fHistMan = new HistogramManager("analysisHistos", "aa", VarManager::kNVars);
     fHistMan->SetUseDefaultVariableNames(kTRUE);
     fHistMan->SetDefaultVarNames(VarManager::fgVariableNames, VarManager::fgVariableUnits);
+
+    //Kfparticle
+    hmassJpsi.setObject(new TH1F("hmassJpsi", "hmassJpsi", 120, 2.4, 3.6));
 
     // Keep track of all the histogram class names to avoid composing strings in the event mixing pairing
     TString histNames = "";
@@ -663,6 +680,7 @@ struct AnalysisSameEventPairing {
         }
       }
     }
+    
     if (context.mOptions.get<bool>("processJpsiToMuMuSkimmed") || context.mOptions.get<bool>("processJpsiToMuMuVertexingSkimmed") || context.mOptions.get<bool>("processVnJpsiToMuMuSkimmed") || context.mOptions.get<bool>("processAllSkimmed")) {
       TString cutNames = fConfigMuonCuts.value;
       if (!cutNames.IsNull()) {
@@ -734,6 +752,17 @@ struct AnalysisSameEventPairing {
     uint32_t dileptonMcDecision = 0; // placeholder, copy of the dqEfficiency.cxx one
     dileptonList.reserve(1);
     dileptonExtraList.reserve(1);
+
+    //Kfparticle
+    //set PV vertex; 
+    KFPVertex kfpVertex;
+    kfpVertex.SetXYZ(event.posX(), event.posY(), event.posZ());
+    kfpVertex.SetCovarianceMatrix(event.covXX(), event.covXY(), event.covYY(), event.covXZ(), event.covYZ(), event.covZZ());
+    kfpVertex.SetChi2(event.chi2());
+    kfpVertex.SetNContributors(event.numContrib());
+
+    KFParticle KFPV(kfpVertex);
+
     for (auto& [t1, t2] : combinations(tracks1, tracks2)) {
       if constexpr (TPairType == VarManager::kJpsiToEE) {
         twoTrackFilter = uint32_t(t1.isBarrelSelected()) & uint32_t(t2.isBarrelSelected()) & fTwoTrackFilterMask;
@@ -784,22 +813,87 @@ struct AnalysisSameEventPairing {
           }
         } // end if (filter bits)
       }   // end for (cuts)
+
+      //Kfparticle
+      if constexpr (TPairType == pairTypeEE){
+
+      cout << "runSameEventPairing test from Liuyao" << endl; 
+      //dauther0
+      std::array<float, 3> trkpos_par0;
+      std::array<float, 3> trkmom_par0;
+      std::array<float, 21> trk_cov0;
+
+      auto trackparCov0 = getTrackParCov(t1);
+      trackparCov0.getXYZGlo(trkpos_par0);
+      trackparCov0.getPxPyPzGlo(trkmom_par0);
+      trackparCov0.getCovXYZPxPyPzGlo(trk_cov0);
+
+      float trkpar_KF0[6] = {trkpos_par0[0], trkpos_par0[1], trkpos_par0[2], trkmom_par0[0], trkmom_par0[1], trkmom_par0[2]};
+      float trkcov_KF0[21];
+      for (int i=0; i<21; i++){
+        trkcov_KF0[i] = trk_cov0[i];
+       }
+
+      KFPTrack kfpTrack_Prong0;
+      kfpTrack_Prong0.SetParameters(trkpar_KF0);
+      kfpTrack_Prong0.SetCovarianceMatrix(trkcov_KF0);
+      kfpTrack_Prong0.SetCharge(t1.sign());
+
+      int pdgProng0 = 11; //e-
+      KFParticle trkProng0_KF(kfpTrack_Prong0, pdgProng0);
+
+      //dauther1; 
+      std::array<float, 3> trkpos_par1;
+      std::array<float, 3> trkmom_par1;
+      std::array<float, 21> trk_cov1;
+
+      auto trackparCov1 = getTrackParCov(t2);
+      trackparCov1.getXYZGlo(trkpos_par1);
+      trackparCov1.getPxPyPzGlo(trkmom_par1);
+      trackparCov1.getCovXYZPxPyPzGlo(trk_cov1);
+      float trkpar_KF1[6] = {trkpos_par1[0], trkpos_par1[1], trkpos_par1[2], trkmom_par1[0], trkmom_par1[1], trkmom_par1[2]};
+      float trkcov_KF1[21];
+      for (int i=0; i<21; i++){
+        trkcov_KF1[i] = trk_cov1[i];
+       }
+
+      KFPTrack kfpTrack_Prong1;
+      kfpTrack_Prong1.SetParameters(trkpar_KF1);
+      kfpTrack_Prong1.SetCovarianceMatrix(trkcov_KF1);
+      kfpTrack_Prong1.SetCharge(t2.sign());
+
+      int pdgProng1 = -11; //e+
+      KFParticle trkProng1_KF(kfpTrack_Prong1, pdgProng1);
+    
+      //for mother;   
+      KFParticle Jpsi;
+      Jpsi.SetConstructMethod(2);
+      Jpsi.AddDaughter(trkProng0_KF);
+      Jpsi.AddDaughter(trkProng1_KF);
+
+      float Jpsi_m, Jpsi_m_err;
+      Jpsi.GetMass(Jpsi_m, Jpsi_m_err);
+
+      hmassJpsi->Fill(Jpsi_m);
+      //jpsicandidate_kf(Jpsi_m, Jpsi.GetChi2());
+     } //KFParticle for JPsiToEE
     }     // end loop over pairs
   }       // end runSameEventPairing
 
-  void processJpsiToEESkimmed(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelected> const& tracks)
+  void processJpsiToEESkimmed(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelectedWithCov> const& tracks) //MyBarrelTracksSelected->MyBarrelTracksSelectedWithCov :Liuyao
   {
     // Reset the fValues array
     VarManager::ResetValues(0, VarManager::kNVars);
     VarManager::FillEvent<gkEventFillMap>(event, VarManager::fgValues);
-    runSameEventPairing<VarManager::kJpsiToEE, gkEventFillMap, gkTrackFillMap>(event, tracks, tracks);
+    runSameEventPairing<VarManager::kJpsiToEE, gkEventFillMap, gkTrackFillMapWithCov>(event, tracks, tracks);//gkTrackFillMap->gkTrackFillMapWithCov :Liuyao
   }
-  void processJpsiToMuMuSkimmed(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyMuonTracksSelected> const& muons)
+
+  void processJpsiToMuMuSkimmed(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyMuonTracksSelected> const& muons) 
   {
     // Reset the fValues array
     VarManager::ResetValues(0, VarManager::kNVars);
     VarManager::FillEvent<gkEventFillMap>(event, VarManager::fgValues);
-    runSameEventPairing<VarManager::kJpsiToMuMu, gkEventFillMap, gkMuonFillMap>(event, muons, muons);
+    runSameEventPairing<VarManager::kJpsiToMuMu, gkEventFillMap, gkMuonFillMap>(event, muons, muons); 
   }
   void processJpsiToMuMuVertexingSkimmed(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyMuonTracksSelectedWithCov> const& muons)
   {
@@ -808,12 +902,12 @@ struct AnalysisSameEventPairing {
     VarManager::FillEvent<gkEventFillMap>(event, VarManager::fgValues);
     runSameEventPairing<VarManager::kJpsiToMuMu, gkEventFillMapWithCov, gkMuonFillMapWithCov>(event, muons, muons);
   }
-  void processVnJpsiToEESkimmed(soa::Filtered<MyEventsVtxCovSelectedQvector>::iterator const& event, soa::Filtered<MyBarrelTracksSelected> const& tracks)
+  void processVnJpsiToEESkimmed(soa::Filtered<MyEventsVtxCovSelectedQvector>::iterator const& event, soa::Filtered<MyBarrelTracksSelectedWithCov> const& tracks) // WithCov: Liuyao
   {
     // Reset the fValues array
     VarManager::ResetValues(0, VarManager::kNVars);
     VarManager::FillEvent<gkEventFillMapWithCovQvector>(event, VarManager::fgValues);
-    runSameEventPairing<VarManager::kJpsiToEE, gkEventFillMapWithCovQvector, gkTrackFillMap>(event, tracks, tracks);
+    runSameEventPairing<VarManager::kJpsiToEE, gkEventFillMapWithCovQvector, gkTrackFillMapWithCov>(event, tracks, tracks); //WithCov: Liuyao
   }
   void processVnJpsiToMuMuSkimmed(soa::Filtered<MyEventsVtxCovSelectedQvector>::iterator const& event, soa::Filtered<MyMuonTracksSelected> const& muons)
   {
@@ -829,14 +923,14 @@ struct AnalysisSameEventPairing {
     VarManager::FillEvent<gkEventFillMap>(event, VarManager::fgValues);
     runSameEventPairing<VarManager::kElectronMuon, gkEventFillMap, gkTrackFillMap>(event, tracks, muons);
   }
-  void processAllSkimmed(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelected> const& tracks, soa::Filtered<MyMuonTracksSelected> const& muons)
+  void processAllSkimmed(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelectedWithCov> const& tracks, soa::Filtered<MyMuonTracksSelected> const& muons)//TracksSelectedWithCov: Liuyao
   {
     // Reset the fValues array
     VarManager::ResetValues(0, VarManager::kNVars);
     VarManager::FillEvent<gkEventFillMap>(event, VarManager::fgValues);
-    runSameEventPairing<VarManager::kJpsiToEE, gkEventFillMap, gkTrackFillMap>(event, tracks, tracks);
-    runSameEventPairing<VarManager::kJpsiToMuMu, gkEventFillMap, gkMuonFillMap>(event, muons, muons);
-    runSameEventPairing<VarManager::kElectronMuon, gkEventFillMap, gkTrackFillMap>(event, tracks, muons);
+    runSameEventPairing<VarManager::kJpsiToEE, gkEventFillMap, gkTrackFillMapWithCov>(event, tracks, tracks); //WithCov: Liuyao    
+    runSameEventPairing<VarManager::kJpsiToMuMu, gkEventFillMap, gkMuonFillMap>(event, muons, muons);      
+    runSameEventPairing<VarManager::kElectronMuon, gkEventFillMap, gkTrackFillMap>(event, tracks, muons);  
   }
   // TODO: dummy function for the case when no process function is enabled
   void processDummy(MyEvents&)
@@ -951,216 +1045,6 @@ struct AnalysisDileptonHadron {
   PROCESS_SWITCH(AnalysisDileptonHadron, processDummy, "Dummy function", false);
 };
 
-struct AnalysisReconKfparticle{
- //reconstuct the weak decay using KFparticle
- //
-  OutputObj<THashList> fOutputList{"output"};
-  Configurable<string> fConfigTrackCuts{"cfgBarrelTrackCuts", "", "Comma separated list of barrel track cuts"};
-  Configurable<float> magneticField{"d_bz", 5., "magnetic field"};
-
-  Filter filterEventSelected = aod::dqanalysisflags::isEventSelected == 1;
-  Filter filterTrackSelected = aod::dqanalysisflags::isBarrelSelected > 0; 
-  
-  HistogramManager* fHistMan;
-  
-  uint32_t fTwoTrackFilterMask = 0;
-
-  std::vector<std::vector<TString>> fTrackHistNames;
-  std::vector<std::vector<TString>> fMuonHistNames;
-  std::vector<std::vector<TString>> fTrackMuonHistNames;
-
-  Produces<o2::aod::Jpsicandidate_Kf> jpsicandidate_kf; 
-
-  void init(o2::framework::InitContext& context)
-  {
-    VarManager::SetDefaultVarNames();
-    fHistMan = new HistogramManager("analysisHistos", "aa", VarManager::kNVars);
-    fHistMan->SetUseDefaultVariableNames(kTRUE);
-    fHistMan->SetDefaultVarNames(VarManager::fgVariableNames, VarManager::fgVariableUnits);
-   
-    KFParticle::SetField(magneticField);    
-
-    // Keep track of all the histogram class names to avoid composing strings in the event mixing pairing
-      TString histNames = "";
-      if (context.mOptions.get<bool>("processJpsiToEESkimmedKfparticle")) {
-        TString cutNames = fConfigTrackCuts.value;
-        if (!cutNames.IsNull()) {
-          std::unique_ptr<TObjArray> objArray(cutNames.Tokenize(","));
-          for (int icut = 0; icut < objArray->GetEntries(); ++icut) {
-            std::vector<TString> names = {
-              Form("PairsBarrelSEPM_%s", objArray->At(icut)->GetName()),
-              Form("PairsBarrelSEPP_%s", objArray->At(icut)->GetName()),
-              Form("PairsBarrelSEMM_%s", objArray->At(icut)->GetName())};
-            histNames += Form("%s;%s;%s;", names[0].Data(), names[1].Data(), names[2].Data());
-            fTrackHistNames.push_back(names);
-            fTwoTrackFilterMask |= (uint32_t(1) << icut);
-          }
-        }
-      }
-
-    // TODO: Create separate histogram directories for each selection used in the creation of the dileptons
-    DefineHistograms(fHistMan, "DileptonInvMass"); // define all histograms
-    VarManager::SetUseVars(fHistMan->GetUsedVars());
-    fOutputList.setObject(fHistMan->GetMainHistogramList());
-  } //end the init()
-  
-    // Template function to run same event pairing (barrel-barrel, muon-muon, barrel-muon)
-  template <int TPairType, uint32_t TEventFillMap, uint32_t TTrackFillMap, typename TEvent, typename TTracks1, typename TTracks2>
-  void runSameEventPairingKfparticle(TEvent const& event, TTracks1 const& tracks1, TTracks2 const& tracks2)
-  {
-
-    unsigned int ncuts = fTrackHistNames.size();
-    std::vector<std::vector<TString>> histNames = fTrackHistNames;
-    if constexpr (TPairType == pairTypeMuMu) {
-      ncuts = fMuonHistNames.size();
-      histNames = fMuonHistNames;
-    }
-    if constexpr (TPairType == pairTypeEMu) {
-      ncuts = fTrackMuonHistNames.size();
-      histNames = fTrackMuonHistNames;
-    }
-
-    uint32_t twoTrackFilter = 0;
-    uint32_t dileptonFilterMap = 0;
-    //uint32_t dileptonMcDecision = 0; // placeholder, copy of the dqEfficiency.cxx one
-
-    //set PV vertex; 
-    KFPVertex kfpVertex; 
-    kfpVertex.SetXYZ(event.posX(), event.posY(), event.posZ());
-    kfpVertex.SetCovarianceMatrix(event.covXX(), event.covXY(), event.covYY(), event.covXZ(), event.covYZ(), event.covZZ());
-    kfpVertex.SetChi2(event.chi2());
-    kfpVertex.SetNContributors(event.numContrib());
-
-    KFParticle KFPV(kfpVertex);
-
-
-    for (auto& [t1, t2] : combinations(tracks1, tracks2)) {
-      //dauther0
-      std::array<float, 3> trkpos_par0;
-      std::array<float, 3> trkmom_par0;
-      std::array<float, 21> trk_cov0;
-
-      auto trackparCov0 = getTrackParCov(t1);
-      trackparCov0.getXYZGlo(trkpos_par0);
-      trackparCov0.getPxPyPzGlo(trkmom_par0);
-      trackparCov0.getCovXYZPxPyPzGlo(trk_cov0);
-
-      float trkpar_KF0[6] = {trkpos_par0[0], trkpos_par0[1], trkpos_par0[2], trkmom_par0[0], trkmom_par0[1], trkmom_par0[2]};
-      float trkcov_KF0[21];
-      for (int i=0; i<21; i++){
-        trkcov_KF0[i] = trk_cov0[i];
-       }
-
-      KFPTrack kfpTrack_Prong0;
-      kfpTrack_Prong0.SetParameters(trkpar_KF0);
-      kfpTrack_Prong0.SetCovarianceMatrix(trkcov_KF0);
-      kfpTrack_Prong0.SetCharge(t1.sign());
-
-      int pdgProng0 = 11; //e-
-      KFParticle trkProng0_KF(kfpTrack_Prong0, pdgProng0); 
-
-      //dauther1; 
-      std::array<float, 3> trkpos_par1;
-      std::array<float, 3> trkmom_par1;
-      std::array<float, 21> trk_cov1;
-
-      auto trackparCov1 = getTrackParCov(t2);
-      trackparCov1.getXYZGlo(trkpos_par1);
-      trackparCov1.getPxPyPzGlo(trkmom_par1);
-      trackparCov1.getCovXYZPxPyPzGlo(trk_cov1);
-      float trkpar_KF1[6] = {trkpos_par1[0], trkpos_par1[1], trkpos_par1[2], trkmom_par1[0], trkmom_par1[1], trkmom_par1[2]};
-      float trkcov_KF1[21];
-      for (int i=0; i<21; i++){
-        trkcov_KF1[i] = trk_cov1[i];
-       }
-
-      KFPTrack kfpTrack_Prong1;
-      kfpTrack_Prong1.SetParameters(trkpar_KF1);
-      kfpTrack_Prong1.SetCovarianceMatrix(trkcov_KF1);
-      kfpTrack_Prong1.SetCharge(t2.sign());
-     
-      int pdgProng1 = -11; //e+
-      KFParticle trkProng1_KF(kfpTrack_Prong1, pdgProng1);
-
-      if constexpr (TPairType == VarManager::kJpsiToEE) {
-        twoTrackFilter = uint32_t(t1.isBarrelSelected()) & uint32_t(t2.isBarrelSelected()) & fTwoTrackFilterMask;
-      }
-      if constexpr (TPairType == VarManager::kJpsiToMuMu) {
-        //twoTrackFilter = uint32_t(t1.isMuonSelected()) & uint32_t(t2.isMuonSelected()) & fTwoMuonFilterMask;
-      }
-      if constexpr (TPairType == VarManager::kElectronMuon) {
-        twoTrackFilter = uint32_t(t1.isBarrelSelected()) & uint32_t(t2.isMuonSelected()) & fTwoTrackFilterMask;
-      }
-      if (!twoTrackFilter) { // the tracks must have at least one filter bit in common to continue
-        continue;
-      }
-      constexpr bool eventHasQvector = ((TEventFillMap & VarManager::ObjTypes::ReducedEventQvector) > 0);
-
-      // TODO: FillPair functions need to provide a template argument to discriminate between cases when cov matrix is available or not
-      VarManager::FillPair<TPairType, TTrackFillMap>(t1, t2);
-      if constexpr ((TPairType == pairTypeEE) || (TPairType == pairTypeMuMu)) { // call this just for ee or mumu pairs
-        VarManager::FillPairVertexing<TPairType, TEventFillMap, TTrackFillMap>(event, t1, t2);
-        if constexpr (eventHasQvector) {
-          VarManager::FillPairVn<TPairType>(t1, t2);
-        }
-      }
-
-      // TODO: provide the type of pair to the dilepton table (e.g. ee, mumu, emu...)
-      dileptonFilterMap = twoTrackFilter;
-      //dileptonList(event, VarManager::fgValues[VarManager::kMass], VarManager::fgValues[VarManager::kPt], VarManager::fgValues[VarManager::kEta], VarManager::fgValues[VarManager::kPhi], t1.sign() + t2.sign(), dileptonFilterMap, dileptonMcDecision);
-
-      constexpr bool muonHasCov = ((TTrackFillMap & VarManager::ObjTypes::MuonCov) > 0 || (TTrackFillMap & VarManager::ObjTypes::ReducedMuonCov) > 0);
-      if constexpr ((TPairType == pairTypeMuMu) && muonHasCov) {
-        //dileptonExtraList(t1.globalIndex(), t2.globalIndex(), VarManager::fgValues[VarManager::kVertexingTauz], VarManager::fgValues[VarManager::kVertexingLz], VarManager::fgValues[VarManager::kVertexingLxy]);
-      }
-
-      if constexpr (eventHasQvector) {
-        //dileptonFlowList(VarManager::fgValues[VarManager::kU2Q2], VarManager::fgValues[VarManager::kU3Q3], VarManager::fgValues[VarManager::kCos2DeltaPhi], VarManager::fgValues[VarManager::kCos3DeltaPhi]);
-      }
-
-      for (unsigned int icut = 0; icut < ncuts; icut++) {
-          if (twoTrackFilter & (uint32_t(1) << icut)) {
-            if (t1.sign() * t2.sign() < 0) {
-              fHistMan->FillHistClass(histNames[icut][0].Data(), VarManager::fgValues);
-            } else {
-              if (t1.sign() > 0) {
-                fHistMan->FillHistClass(histNames[icut][1].Data(), VarManager::fgValues);
-              } else {
-                fHistMan->FillHistClass(histNames[icut][2].Data(), VarManager::fgValues);
-              }
-            }
-          } // end if (filter bits)
-        }   // end for (cuts)
-
-      //for mother;   
-      KFParticle Jpsi;
-      Jpsi.SetConstructMethod(2);
-      Jpsi.AddDaughter(trkProng0_KF);
-      Jpsi.AddDaughter(trkProng1_KF);
-      
-      float Jpsi_m, Jpsi_m_err; 
-      Jpsi.GetMass(Jpsi_m, Jpsi_m_err);
- 
-      jpsicandidate_kf(Jpsi_m, Jpsi.GetChi2()); 
-      
-       
-    }     // end loop over pairs
-  }       // end runSameEventPairing
-  
-  //void processJpsiToEESkimmedKfparticle(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelected> const& tracks){
-  void processJpsiToEESkimmedKfparticle(soa::Filtered<MyEventsVtxCovSelected>::iterator const& event, soa::Filtered<MyBarrelTracksSelectedWithCov> const& tracks){
-
-  // Reset the fValues array 
-    VarManager::ResetValues(0, VarManager::kNVars);
-    VarManager::FillEvent<gkEventFillMap>(event, VarManager::fgValues);
-    runSameEventPairingKfparticle<VarManager::kJpsiToEE, gkEventFillMap, gkTrackFillMapWithCov>(event, tracks, tracks);
- 
-  } //end the loop for the tracks; 
-  
- 
- PROCESS_SWITCH(AnalysisReconKfparticle, processJpsiToEESkimmedKfparticle, "Run Jpsi reconstruction using KFparticle tools, with skimmed tracks", false);
-};  //ends the struct AnalysisReconKfparticle
-
 WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
 {
   return WorkflowSpec{
@@ -1169,8 +1053,7 @@ WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
     adaptAnalysisTask<AnalysisMuonSelection>(cfgc),
     adaptAnalysisTask<AnalysisEventMixing>(cfgc),
     adaptAnalysisTask<AnalysisSameEventPairing>(cfgc),
-    adaptAnalysisTask<AnalysisDileptonHadron>(cfgc),
-    adaptAnalysisTask<AnalysisReconKfparticle>(cfgc)};
+    adaptAnalysisTask<AnalysisDileptonHadron>(cfgc)};
 }
 void DefineHistograms(HistogramManager* histMan, TString histClasses)
 {

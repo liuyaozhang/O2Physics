@@ -363,6 +363,11 @@ namespace reducedpair
 {
 DECLARE_SOA_INDEX_COLUMN(ReducedEvent, reducedevent); //!
 DECLARE_SOA_COLUMN(Mass, mass, float);                //!
+
+//KFParticle
+//DECLARE_SOA_COLUMN(MassKF, masskf, float);            //!
+//DECLARE_SOA_COLUMN(Chi2KF, chi2kf, float);            //!
+
 DECLARE_SOA_COLUMN(Pt, pt, float);                    //!
 DECLARE_SOA_COLUMN(Eta, eta, float);                  //!
 DECLARE_SOA_COLUMN(Phi, phi, float);                  //!
@@ -395,6 +400,7 @@ DECLARE_SOA_DYNAMIC_COLUMN(Rap, rap, //!
 DECLARE_SOA_TABLE(Dileptons, "AOD", "RTDILEPTON", //!
                   reducedpair::ReducedEventId,
                   reducedpair::Mass,
+                  //reducedpair::MassKF, reducedpair::Chi2KF,
                   reducedpair::Pt, reducedpair::Eta, reducedpair::Phi, reducedpair::Sign,
                   reducedpair::FilterMap,
                   reducedpair::McDecision,
@@ -464,19 +470,6 @@ DECLARE_SOA_TABLE(DileptonTrackCandidates, "AOD", "RTDILEPTONTRACK", //!
                   dileptonTrackCandidate::Lxy);
 
 using DileptonTrackCandidate = DileptonTrackCandidates::iterator;
-
-
-// jpsicandidate_Kf
-namespace jpsicandidate_kf
-{
-DECLARE_SOA_INDEX_COLUMN(ReducedEvent, reducedevent);
-DECLARE_SOA_COLUMN(MassKF, massKF, float); 
-DECLARE_SOA_COLUMN(Chi2KF, chi2KF, float);  
-}
-
-DECLARE_SOA_TABLE(Jpsicandidate_Kf, "AOD", "RTJPSICANDKF", //!
-                  jpsicandidate_kf::MassKF, 
-                  jpsicandidate_kf::Chi2KF); 
 
 namespace v0bits
 {
