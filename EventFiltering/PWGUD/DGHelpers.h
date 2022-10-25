@@ -46,10 +46,10 @@ template <typename T>
 bool cleanFITCollision(T& col, std::vector<float> lims);
 
 template <typename T>
-bool cleanZDC(T& bc, aod::Zdcs& zdcs, std::vector<float>& lims);
+bool cleanZDC(T const& bc, aod::Zdcs& zdcs, std::vector<float>& lims);
 
 template <typename T>
-bool cleanCalo(T& bc, aod::Calos& calos, std::vector<float>& lims);
+bool cleanCalo(T const& bc, aod::Calos& calos, std::vector<float>& lims);
 
 template <typename TC>
 bool hasGoodPID(DGCutparHolder diffCuts, TC track);
@@ -93,9 +93,9 @@ struct DGSelector {
     }
 
     // no activity in muon arm
-    LOGF(debug, "Muons %i", fwdtracks.size());
-    for (auto& muon : fwdtracks) {
-      LOGF(debug, "  %i / %f / %f / %f", muon.trackType(), muon.eta(), muon.pt(), muon.p());
+    LOGF(debug, "FwdTracks %i", fwdtracks.size());
+    for (auto& fwdtrack : fwdtracks) {
+      LOGF(debug, "  %i / %f / %f / %f", fwdtrack.trackType(), fwdtrack.eta(), fwdtrack.pt(), fwdtrack.p());
     }
     if (fwdtracks.size() > 0) {
       return 2;
@@ -166,7 +166,8 @@ struct DGSelector {
     }
 
     // net charge
-    if (netCharge < diffCuts.minNetCharge() || netCharge > diffCuts.maxNetCharge()) {
+    auto netChargeValues = diffCuts.netCharges();
+    if (std::find(netChargeValues.begin(), netChargeValues.end(), netCharge) == netChargeValues.end()) {
       return 10;
     }
     // invariant mass
@@ -178,13 +179,22 @@ struct DGSelector {
     return 0;
   };
 
-  template <typename BCs, typename TCs>
-  int IsSelected(DGCutparHolder diffCuts, BCs& bc, TCs& tracks)
+  template <typename BCs, typename TCs, typename FWs>
+  int IsSelected(DGCutparHolder diffCuts, BCs& bc, TCs& tracks, FWs& fwdtracks)
   {
     // check that there are no FIT signals in bc
     // Double Gap (DG) condition
     if (!cleanFIT(bc, diffCuts.FITAmpLimits())) {
       return 1;
+    }
+
+    // no activity in muon arm
+    LOGF(debug, "FwdTracks %i", fwdtracks.size());
+    for (auto& fwdtrack : fwdtracks) {
+      LOGF(debug, "  %i / %f / %f / %f", fwdtrack.trackType(), fwdtrack.eta(), fwdtrack.pt(), fwdtrack.p());
+    }
+    if (fwdtracks.size() > 0) {
+      return 2;
     }
 
     // number of tracks
@@ -224,9 +234,11 @@ struct DGSelector {
     }
 
     // net charge
-    if (netCharge < diffCuts.minNetCharge() || netCharge > diffCuts.maxNetCharge()) {
+    auto netChargeValues = diffCuts.netCharges();
+    if (std::find(netChargeValues.begin(), netChargeValues.end(), netCharge) == netChargeValues.end()) {
       return 10;
     }
+
     // invariant mass
     if (ivm.M() < diffCuts.minIVM() || ivm.M() > diffCuts.maxIVM()) {
       return 11;
@@ -472,7 +484,7 @@ bool cleanFITCollision(T& col, std::vector<float> lims)
 }
 // -----------------------------------------------------------------------------
 template <typename T>
-bool cleanZDC(T& bc, aod::Zdcs& zdcs, std::vector<float>& lims)
+bool cleanZDC(T const& bc, aod::Zdcs& zdcs, std::vector<float>& lims)
 {
   const auto& ZdcBC = zdcs.sliceByCached(aod::zdc::bcId, bc.globalIndex());
   return (ZdcBC.size() == 0);
@@ -480,7 +492,7 @@ bool cleanZDC(T& bc, aod::Zdcs& zdcs, std::vector<float>& lims)
 
 // -----------------------------------------------------------------------------
 template <typename T>
-bool cleanCalo(T& bc, aod::Calos& calos, std::vector<float>& lims)
+bool cleanCalo(T const& bc, aod::Calos& calos, std::vector<float>& lims)
 {
   const auto& CaloBC = calos.sliceByCached(aod::calo::bcId, bc.globalIndex());
   return (CaloBC.size() == 0);
