@@ -136,7 +136,6 @@ struct AnalysisEventSelection {
 
   void init(o2::framework::InitContext&)
   {
-    std::cout << "AnalysisEventSelection check  from Liuyao" << std::endl; 
     fEventCut = new AnalysisCompositeCut(true);
     TString eventCutStr = fConfigEventCuts.value;
     fEventCut->AddCut(dqcuts::GetAnalysisCut(eventCutStr.Data()));
@@ -218,7 +217,6 @@ struct AnalysisTrackSelection {
 
   void init(o2::framework::InitContext&)
   {
-    std::cout << "AnalysisTrackSelection check  from Liuyao" << std::endl; 
     TString cutNamesStr = fConfigCuts.value;
     if (!cutNamesStr.IsNull()) {
       std::unique_ptr<TObjArray> objArray(cutNamesStr.Tokenize(","));
@@ -301,7 +299,6 @@ struct AnalysisMuonSelection {
 
   void init(o2::framework::InitContext&)
   {
-    std::cout << "AnalysisMuonSelection check  from Liuyao" << std::endl; 
     TString cutNamesStr = fConfigCuts.value;
     if (!cutNamesStr.IsNull()) {
       std::unique_ptr<TObjArray> objArray(cutNamesStr.Tokenize(","));
@@ -397,7 +394,6 @@ struct AnalysisEventMixing {
 
   void init(o2::framework::InitContext& context)
   {
-    std::cout << "AnalysisEventMixing check  from Liuyao" << std::endl; 
     VarManager::SetDefaultVarNames();
     fHistMan = new HistogramManager("analysisHistos", "aa", VarManager::kNVars);
     fHistMan->SetUseDefaultVariableNames(kTRUE);
@@ -654,7 +650,6 @@ struct AnalysisSameEventPairing {
 
   void init(o2::framework::InitContext& context)
   {
-    std::cout << "AnalysisSameEventPairing check  from Liuyao" << std::endl; 
     VarManager::SetDefaultVarNames();
     fHistMan = new HistogramManager("analysisHistos", "aa", VarManager::kNVars);
     fHistMan->SetUseDefaultVariableNames(kTRUE);
@@ -776,48 +771,10 @@ struct AnalysisSameEventPairing {
       if (!twoTrackFilter) { // the tracks must have at least one filter bit in common to continue
         continue;
       }
-      constexpr bool eventHasQvector = ((TEventFillMap & VarManager::ObjTypes::ReducedEventQvector) > 0);
-
-      // TODO: FillPair functions need to provide a template argument to discriminate between cases when cov matrix is available or not
-      VarManager::FillPair<TPairType, TTrackFillMap>(t1, t2);
-      if constexpr ((TPairType == pairTypeEE) || (TPairType == pairTypeMuMu)) { // call this just for ee or mumu pairs
-        VarManager::FillPairVertexing<TPairType, TEventFillMap, TTrackFillMap>(event, t1, t2);
-        if constexpr (eventHasQvector) {
-          VarManager::FillPairVn<TPairType>(t1, t2);
-        }
-      }
-
-      // TODO: provide the type of pair to the dilepton table (e.g. ee, mumu, emu...)
-      dileptonFilterMap = twoTrackFilter;
-      dileptonList(event, VarManager::fgValues[VarManager::kMass], VarManager::fgValues[VarManager::kPt], VarManager::fgValues[VarManager::kEta], VarManager::fgValues[VarManager::kPhi], t1.sign() + t2.sign(), dileptonFilterMap, dileptonMcDecision);
-
-      constexpr bool muonHasCov = ((TTrackFillMap & VarManager::ObjTypes::MuonCov) > 0 || (TTrackFillMap & VarManager::ObjTypes::ReducedMuonCov) > 0);
-      if constexpr ((TPairType == pairTypeMuMu) && muonHasCov) {
-        dileptonExtraList(t1.globalIndex(), t2.globalIndex(), VarManager::fgValues[VarManager::kVertexingTauz], VarManager::fgValues[VarManager::kVertexingLz], VarManager::fgValues[VarManager::kVertexingLxy]);
-      }
-
-      if constexpr (eventHasQvector) {
-        dileptonFlowList(VarManager::fgValues[VarManager::kU2Q2], VarManager::fgValues[VarManager::kU3Q3], VarManager::fgValues[VarManager::kCos2DeltaPhi], VarManager::fgValues[VarManager::kCos3DeltaPhi]);
-      }
-
-      for (unsigned int icut = 0; icut < ncuts; icut++) {
-        if (twoTrackFilter & (uint32_t(1) << icut)) {
-          if (t1.sign() * t2.sign() < 0) {
-            fHistMan->FillHistClass(histNames[icut][0].Data(), VarManager::fgValues);
-          } else {
-            if (t1.sign() > 0) {
-              fHistMan->FillHistClass(histNames[icut][1].Data(), VarManager::fgValues);
-            } else {
-              fHistMan->FillHistClass(histNames[icut][2].Data(), VarManager::fgValues);
-            }
-          }
-        } // end if (filter bits)
-      }   // end for (cuts)
 
       //Kfparticle
       if constexpr (TPairType == pairTypeEE){
 
-      cout << "runSameEventPairing test from Liuyao" << endl; 
       //dauther0
       std::array<float, 3> trkpos_par0;
       std::array<float, 3> trkmom_par0;
@@ -864,7 +821,7 @@ struct AnalysisSameEventPairing {
 
       int pdgProng1 = -11; //e+
       KFParticle trkProng1_KF(kfpTrack_Prong1, pdgProng1);
-    
+
       //for mother;   
       KFParticle Jpsi;
       Jpsi.SetConstructMethod(2);
@@ -877,6 +834,44 @@ struct AnalysisSameEventPairing {
       hmassJpsi->Fill(Jpsi_m);
       //jpsicandidate_kf(Jpsi_m, Jpsi.GetChi2());
      } //KFParticle for JPsiToEE
+ 
+      constexpr bool eventHasQvector = ((TEventFillMap & VarManager::ObjTypes::ReducedEventQvector) > 0);
+
+      // TODO: FillPair functions need to provide a template argument to discriminate between cases when cov matrix is available or not
+      VarManager::FillPair<TPairType, TTrackFillMap>(t1, t2);
+      if constexpr ((TPairType == pairTypeEE) || (TPairType == pairTypeMuMu)) { // call this just for ee or mumu pairs
+        VarManager::FillPairVertexing<TPairType, TEventFillMap, TTrackFillMap>(event, t1, t2);
+        if constexpr (eventHasQvector) {
+          VarManager::FillPairVn<TPairType>(t1, t2);
+        }
+      }
+
+      // TODO: provide the type of pair to the dilepton table (e.g. ee, mumu, emu...)
+      dileptonFilterMap = twoTrackFilter;
+      dileptonList(event, VarManager::fgValues[VarManager::kMass], VarManager::fgValues[VarManager::kPt], VarManager::fgValues[VarManager::kEta], VarManager::fgValues[VarManager::kPhi], t1.sign() + t2.sign(), dileptonFilterMap, dileptonMcDecision);
+
+      constexpr bool muonHasCov = ((TTrackFillMap & VarManager::ObjTypes::MuonCov) > 0 || (TTrackFillMap & VarManager::ObjTypes::ReducedMuonCov) > 0);
+      if constexpr ((TPairType == pairTypeMuMu) && muonHasCov) {
+        dileptonExtraList(t1.globalIndex(), t2.globalIndex(), VarManager::fgValues[VarManager::kVertexingTauz], VarManager::fgValues[VarManager::kVertexingLz], VarManager::fgValues[VarManager::kVertexingLxy]);
+      }
+
+      if constexpr (eventHasQvector) {
+        dileptonFlowList(VarManager::fgValues[VarManager::kU2Q2], VarManager::fgValues[VarManager::kU3Q3], VarManager::fgValues[VarManager::kCos2DeltaPhi], VarManager::fgValues[VarManager::kCos3DeltaPhi]);
+      }
+
+      for (unsigned int icut = 0; icut < ncuts; icut++) {
+        if (twoTrackFilter & (uint32_t(1) << icut)) {
+          if (t1.sign() * t2.sign() < 0) {
+            fHistMan->FillHistClass(histNames[icut][0].Data(), VarManager::fgValues);
+          } else {
+            if (t1.sign() > 0) {
+              fHistMan->FillHistClass(histNames[icut][1].Data(), VarManager::fgValues);
+            } else {
+              fHistMan->FillHistClass(histNames[icut][2].Data(), VarManager::fgValues);
+            }
+          }
+        } // end if (filter bits)
+      }   // end for (cuts)
     }     // end loop over pairs
   }       // end runSameEventPairing
 
